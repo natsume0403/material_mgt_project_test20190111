@@ -13,6 +13,15 @@ use App\Controller\AppController;
 class ArticlesController extends AppController
 {
 
+    public function initialize()
+    {
+        parent::initialize();
+
+        $this->loadComponent('Paginator');
+        $this->loadComponent('Flash'); // FlashComponent をインクルード
+        $this->Auth->allow(['tags']);
+    }
+
     /**
      * Index method
      *
@@ -54,6 +63,9 @@ class ArticlesController extends AppController
         $article = $this->Articles->newEntity();
         if ($this->request->is('post')) {
             $article = $this->Articles->patchEntity($article, $this->request->getData());
+            // 変更: セッションから user_id をセット
+            $article->user_id = $this->Auth->user('id');
+
             if ($this->Articles->save($article)) {
                 $this->Flash->success(__('The article has been saved.'));
 
@@ -64,6 +76,9 @@ class ArticlesController extends AppController
         $users = $this->Articles->Users->find('list', ['limit' => 200]);
         $tags = $this->Articles->Tags->find('list', ['limit' => 200]);
         $this->set(compact('article', 'users', 'tags'));
+        // ビューコンテキストに tags をセット
+        $this->set('tags', $tags);
+        $this->set('article', $article);
     }
 
     /**
@@ -110,5 +125,24 @@ class ArticlesController extends AppController
         }
 
         return $this->redirect(['action' => 'index']);
+    }
+    public function isAuthorized($user)
+    {
+        $action = $this->request->getParam('action');
+        // add および tags アクションは、常にログインしているユーザーに許可されます。
+        if (in_array($action, ['add', 'tags'])) {
+            return true;
+        }
+
+        // 他のすべてのアクションにはスラッグが必要です。
+        $slug = $this->request->getParam('pass.0');
+        if (!$slug) {
+            return false;
+        }
+
+        // 記事が現在のユーザーに属していることを確認します。
+        $article = $this->Articles->findBySlug($slug)->first();
+
+        return $article->user_id === $user['id'];
     }
 }
